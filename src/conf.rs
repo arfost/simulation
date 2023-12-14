@@ -13,11 +13,11 @@ pub struct Config {
     pub window_height: u32,
 
     /// TODO field_width
-    #[clap(long = "field-width", env = "FIELD_WIDTH", default_value = "160")]
+    #[clap(long = "field-width", env = "FIELD_WIDTH", default_value = "80")]
     pub field_width: usize,
 
     /// TODO field_height
-    #[clap(long = "field-height", env = "FIELD_HEIGHT", default_value = "120")]
+    #[clap(long = "field-height", env = "FIELD_HEIGHT", default_value = "60")]
     pub field_height: usize,
 }
 

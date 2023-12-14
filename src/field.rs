@@ -5,6 +5,8 @@ use sdl2::rect::Rect;
 use sdl2::render::WindowCanvas;
 use std::collections::HashMap;
 
+const BASE_SIZE: i32 = 10;
+
 #[derive(Clone, Debug)]
 pub enum Cell {
     Empty,
@@ -241,10 +243,10 @@ impl Field {
             for y in 0..max_y {
                 let cell = line.get(&y).unwrap();
 
-                let draw_x = x as i32 * 5;
-                let draw_y = y as i32 * 5;
-                let draw_w = 5;
-                let draw_h = 5;
+                let draw_x = x as i32 * BASE_SIZE;
+                let draw_y = y as i32 * BASE_SIZE;
+                let draw_w = BASE_SIZE as u32;
+                let draw_h = BASE_SIZE as u32;
 
                 let rect = Rect::new(draw_x, draw_y, draw_w, draw_h);
 

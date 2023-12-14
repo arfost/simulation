@@ -13,7 +13,7 @@ pub enum Action {
 pub struct Bot {
     pub brain: Neural,
     pub energy: isize,
-    pub id: u8,
+    pub id: u32,
     pub color: (u8, u8, u8),
 }
 
@@ -27,8 +27,12 @@ impl Bot {
         Self {
             brain: Neural::new(input_layers_num, layers_num, layers_size, output_layers_num),
             energy: 10,
-            id: rand::thread_rng().gen_range(0..10),
-            color: (0, 0, 0),
+            id: rand::thread_rng().gen_range(0..10000),
+            color: (
+              rand::thread_rng().gen(),
+              rand::thread_rng().gen(),
+              rand::thread_rng().gen(),
+            ),
         }
     }
 
@@ -40,7 +44,7 @@ impl Bot {
                 continue;
             } else if emptiness == &0 {
                 let result = self.brain.execute(vec![
-                    self.id as f64 / 10.0,
+                    self.id as f64 / 10000.0,
                     self.energy as f64 / 10.0,
                     direction.clone() as f64 / 8.0,
                     0.0,
@@ -91,15 +95,12 @@ impl Bot {
         new_me.energy = self.energy;
         if rand::thread_rng().gen_range(0..100) < 20 {
             new_me.brain.mutate();
-            new_me.id = new_me.id + 1;
-            if new_me.id > 9 {
-                new_me.id = 0;
-            }
-            new_me.color = (
-                rand::thread_rng().gen(),
-                rand::thread_rng().gen(),
-                rand::thread_rng().gen(),
-            );
+            new_me.id = rand::thread_rng().gen_range(0..10000);
+            // new_me.color = (
+            //     rand::thread_rng().gen(),
+            //     rand::thread_rng().gen(),
+            //     rand::thread_rng().gen(),
+            // );
         }
         new_me
     }
