@@ -23,7 +23,7 @@ impl Neural {
                     } else {
                         (0..layers_size)
                             .map(|_| {
-                                if layer_num == 0 {
+                                if (layer_num == 0) {
                                     Neuron::new(input_layers_num)
                                 } else {
                                     Neuron::new(layers_size)

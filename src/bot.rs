@@ -1,5 +1,5 @@
 use crate::ai::neural::Neural;
-use crate::field::OtherBot;
+use crate::field::{OtherBot, Color};
 use rand::Rng;
 
 pub enum Action {
@@ -15,6 +15,7 @@ pub struct Bot {
     pub energy: isize,
     pub id: u32,
     pub color: (u8, u8, u8),
+    pub action_color: Color,
 }
 
 impl Bot {
@@ -33,6 +34,7 @@ impl Bot {
               rand::thread_rng().gen(),
               rand::thread_rng().gen(),
             ),
+            action_color:Color::None
         }
     }
 

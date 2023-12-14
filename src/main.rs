@@ -42,6 +42,6 @@ fn main() {
         field.draw(&mut canvas);
 
         canvas.present();
-        ::std::thread::sleep(Duration::new(2, 1_000_000_000u32 / 60));
+        ::std::thread::sleep(Duration::new(1, 1_000_000_000u32 / 60));
     }
 }

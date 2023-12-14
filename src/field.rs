@@ -4,14 +4,11 @@ use rand::Rng;
 use sdl2::rect::Rect;
 use sdl2::render::WindowCanvas;
 use std::collections::HashMap;
+use std::fmt::format;
 
 const BASE_SIZE: i32 = 10;
 
 #[derive(Clone, Debug)]
-pub enum Cell {
-    Empty,
-    Bot(Bot),
-}
 
 pub enum Color {
     None,
@@ -26,31 +23,44 @@ pub struct OtherBot {
     pub energy: isize,
 }
 
+pub struct KillZone {
+    pub time_appear: usize,
+    pub shape: (usize, usize, usize, usize),
+}
+
+pub struct BotPosition {
+    pub bot: Bot,
+    pub x: usize,
+    pub y: usize,
+}
+
 pub struct Field {
-    cells: HashMap<usize, HashMap<usize, Cell>>,
+    cells: HashMap<String, BotPosition>,
     colors: HashMap<String, Color>,
+    age: usize,
+    killzones: Vec<KillZone>,
 }
 
 impl Field {
     pub fn new(width: usize, height: usize) -> Self {
         Self {
+            killzones: vec![KillZone {
+                shape: (0, 0, 0, 0),
+                time_appear: 200,
+            }],
+            age: 0,
             colors: HashMap::new(),
-            cells: (0..width)
+            cells: (0..20)
                 .map(|x| {
+                    let x = rand::thread_rng().gen_range(0..width);
+                    let y = rand::thread_rng().gen_range(0..height);
                     (
-                        x,
-                        (0..height)
-                            .map(|y| {
-                                (
-                                    y,
-                                    if rand::thread_rng().gen_range(0..1000) < 5 {
-                                        Cell::Bot(Bot::new())
-                                    } else {
-                                        Cell::Empty
-                                    },
-                                )
-                            })
-                            .collect(),
+                        format!("{}:{}", x, y),
+                        BotPosition {
+                            bot: Bot::new(),
+                            x: x,
+                            y: y,
+                        },
                     )
                 })
                 .collect(),
@@ -60,21 +70,17 @@ impl Field {
     fn get_cell(&self, x: isize, y: isize) -> (i8, Option<OtherBot>) {
         let c = get_conf();
         if x >= 0 && y >= 0 && x < c.field_width as isize - 1 && y < c.field_height as isize - 1 {
-            match self
-                .cells
-                .get(&(x as usize))
-                .unwrap_or(&HashMap::new())
-                .get(&(y as usize))
-                .unwrap_or(&Cell::Empty)
-            {
-                Cell::Bot(bot) => (
+            if self.cells.contains_key(&format!("{}{}", x, y)) {
+                let bot_pos = self.cells.get(&format!("{}{}", x, y)).unwrap();
+                (
                     1,
                     Some(OtherBot {
-                        id: bot.id as usize,
-                        energy: bot.energy,
+                        energy: bot_pos.bot.energy,
+                        id: bot_pos.bot.id as usize,
                     }),
-                ),
-                _ => (0, None),
+                )
+            } else {
+                (0, None)
             }
         } else {
             (-1, None)
@@ -98,189 +104,131 @@ impl Field {
     pub fn step(&mut self) {
         self.colors.clear();
 
-        let mut actions = Vec::<(usize, usize, usize, Action)>::new();
-        for (x, line) in self.cells.iter() {
-            for (y, cell) in line.iter() {
-                if let Cell::Bot(bot) = cell {
-                    let x = x.clone() as isize;
-                    let y = y.clone() as isize;
-                    let (angle, action) = bot.step(vec![
-                        self.get_cell(x - 1, y - 1),
-                        self.get_cell(x, y - 1),
-                        self.get_cell(x + 1, y - 1),
-                        self.get_cell(x - 1, y),
-                        self.get_cell(x + 1, y),
-                        self.get_cell(x - 1, y + 1),
-                        self.get_cell(x, y + 1),
-                        self.get_cell(x + 1, y + 1),
-                    ]);
-                    actions.push((
-                        x.clone() as usize,
-                        y.clone() as usize,
-                        angle as usize,
-                        action,
-                    ));
+        self.age += 1;
+
+        let mut new_pos = Vec::<BotPosition>::new();
+        for (_key, bot_pos) in self.cells.iter() {
+            let x = bot_pos.x.clone() as isize;
+            let y = bot_pos.y.clone() as isize;
+
+            let (angle, action) = bot_pos.bot.step(vec![
+                self.get_cell(x - 1, y - 1),
+                self.get_cell(x, y - 1),
+                self.get_cell(x + 1, y - 1),
+                self.get_cell(x - 1, y),
+                self.get_cell(x + 1, y),
+                self.get_cell(x - 1, y + 1),
+                self.get_cell(x, y + 1),
+                self.get_cell(x + 1, y + 1),
+            ]);
+
+
+            let (new_x, new_y) = Self::get_new_coordinates(bot_pos.x, bot_pos.y, angle as usize);
+            match action {
+                Action::Move => {
+
+                  let mut np = BotPosition{
+                    bot:bot_pos.bot.clone(),
+                    x: new_x,
+                    y: new_y
+                  };
+
+                  np.bot.energy += -2;
+                  np.bot.action_color = Color::Yellow;
+                  new_pos.push(np);
+
+                }
+                Action::Reproduction => {
+
+                  let mut np = BotPosition{
+                    bot:bot_pos.bot.clone(),
+                    x:x.clone() as usize,
+                    y:y.clone() as usize,
+                  };
+
+                  np.bot.action_color = Color::Green;
+                  
+                  np.bot.energy += -3;
+                  new_pos.push(np);
+
+                  let new_bot = bot_pos.bot.mutate();
+
+                  new_pos.push(BotPosition{
+                    bot:new_bot,
+                    x:new_x,
+                    y:new_y
+                  });
+
+                }
+                Action::Attack => {
+                  let attacked = self.cells.get(&format!("{}{}", new_x, new_y)).unwrap();
+
+                  let mut np = BotPosition{
+                    bot:bot_pos.bot.clone(),
+                    x:x.clone() as usize,
+                    y:y.clone() as usize,
+                  };
+
+                  np.bot.action_color = Color::Red;
+                  np.bot.energy += 3;
+                  new_pos.push(np);
+
+                }
+                Action::Heal => {
+                
+                  let mut np = BotPosition{
+                    bot:bot_pos.bot.clone(),
+                    x:x.clone() as usize,
+                    y:y.clone() as usize,
+                  };
+
+                  np.bot.action_color = Color::None;
+                  np.bot.energy += 3;
+                  new_pos.push(np);
                 }
             }
         }
 
-        for (x, y, angle, action) in actions {
-            match action {
-                Action::Move => {
-                    let bot = self.cells.get(&x).unwrap().get(&y).unwrap().clone();
-                    self.cells.get_mut(&x).unwrap().remove(&y);
-                    self.cells
-                        .get_mut(&x)
-                        .unwrap()
-                        .insert(y.clone(), Cell::Empty);
-                    let (new_x, new_y) = Self::get_new_coordinates(x, y, angle);
-                    self.cells.get_mut(&new_x).unwrap().remove(&new_y);
-                    self.cells
-                        .get_mut(&new_x)
-                        .unwrap()
-                        .insert(new_y.clone(), bot);
-                    self.colors
-                        .insert(format!("{}:{}", new_x, new_y), Color::Yellow);
-
-                    if let Cell::Bot(bot) =
-                        self.cells.get_mut(&new_x).unwrap().get_mut(&new_y).unwrap()
-                    {
-                        bot.energy -= 2;
-                    }
-
-                    if let Cell::Bot(bot) = self.cells.get(&new_x).unwrap().get(&new_y).unwrap() {
-                        if bot.energy <= 0 {
-                            self.cells.get_mut(&new_x).unwrap().remove(&new_y);
-                            self.cells
-                                .get_mut(&new_x)
-                                .unwrap()
-                                .insert(new_y.clone(), Cell::Empty);
-                        }
-                    }
-                }
-                Action::Reproduction => {
-                    let bot = self.cells.get(&x).unwrap().get(&y).unwrap().clone();
-                    let (new_x, new_y) = Self::get_new_coordinates(x, y, angle);
-                    self.cells.get_mut(&new_x).unwrap().remove(&new_y);
-                    if let Cell::Bot(bot) = bot {
-                        self.cells
-                            .get_mut(&new_x)
-                            .unwrap()
-                            .insert(new_y.clone(), Cell::Bot(bot.mutate()));
-                    }
-                    self.colors
-                        .insert(format!("{}:{}", new_x, new_y), Color::Green);
-
-                    if let Cell::Bot(bot) = self.cells.get_mut(&x).unwrap().get_mut(&y).unwrap() {
-                        bot.energy -= 2;
-                    };
-
-                    if let Cell::Bot(bot) = self.cells.get(&x).unwrap().get(&y).unwrap() {
-                        if bot.energy <= 1 {
-                            self.cells.get_mut(&x).unwrap().remove(&y);
-                            self.cells
-                                .get_mut(&x)
-                                .unwrap()
-                                .insert(y.clone(), Cell::Empty);
-                        }
-                    }
-                }
-                Action::Attack => {
-                    let bot = self.cells.get(&x).unwrap().get(&y).unwrap().clone();
-                    self.cells.get_mut(&x).unwrap().remove(&y);
-                    self.cells
-                        .get_mut(&x)
-                        .unwrap()
-                        .insert(y.clone(), Cell::Empty);
-                    let (new_x, new_y) = Self::get_new_coordinates(x, y, angle);
-                    self.cells.get_mut(&new_x).unwrap().remove(&new_y);
-                    self.cells
-                        .get_mut(&new_x)
-                        .unwrap()
-                        .insert(new_y.clone(), bot);
-                    self.colors
-                        .insert(format!("{}:{}", new_x, new_y), Color::Red);
-
-                    if let Cell::Bot(bot) =
-                        self.cells.get_mut(&new_x).unwrap().get_mut(&new_y).unwrap()
-                    {
-                        bot.energy += 1;
-                    }
-
-                    if let Cell::Bot(bot) = self.cells.get(&x).unwrap().get(&y).unwrap() {
-                        if bot.energy <= 0 {
-                            self.cells.get_mut(&x).unwrap().remove(&y);
-                            self.cells
-                                .get_mut(&x)
-                                .unwrap()
-                                .insert(y.clone(), Cell::Empty);
-                        }
-                    }
-                }
-                Action::Heal => {
-                    if let Cell::Bot(bot) = self.cells.get_mut(&x).unwrap().get_mut(&y).unwrap() {
-                        bot.energy -= 1;
-                    }
-                    if let Cell::Bot(bot) = self.cells.get(&x).unwrap().get(&y).unwrap() {
-                        if bot.energy <= 0 {
-                            self.cells.get_mut(&x).unwrap().remove(&y);
-                            self.cells
-                                .get_mut(&x)
-                                .unwrap()
-                                .insert(y.clone(), Cell::Empty);
-                        }
-                    }
-                }
-            }
+        self.cells.clear();
+        for np in new_pos {
+          if np.bot.energy>=0 {
+            self.cells.insert(format!("{}{}", np.x, np.y), np);
+          }
         }
     }
 
+
     pub fn draw(&self, canvas: &mut WindowCanvas) {
-        let max_x = self.cells.len();
-        for x in 0..max_x {
-            let line = self.cells.get(&x).unwrap();
-            let max_y = line.len();
-            for y in 0..max_y {
-                let cell = line.get(&y).unwrap();
+        for (key, bot_pos) in self.cells.iter() {
+            let rect = Rect::new(
+                bot_pos.x as i32 * BASE_SIZE,
+                bot_pos.y as i32 * BASE_SIZE,
+                BASE_SIZE as u32,
+                BASE_SIZE as u32,
+            );
+            canvas.set_draw_color(sdl2::pixels::Color::RGB(
+                bot_pos.bot.color.0,
+                bot_pos.bot.color.1,
+                bot_pos.bot.color.2,
+            ));
+            canvas.fill_rect(rect).unwrap();
 
-                let draw_x = x as i32 * BASE_SIZE;
-                let draw_y = y as i32 * BASE_SIZE;
-                let draw_w = BASE_SIZE as u32;
-                let draw_h = BASE_SIZE as u32;
-
-                let rect = Rect::new(draw_x, draw_y, draw_w, draw_h);
-
-                match cell {
-                    Cell::Empty => {}
-                    Cell::Bot(bot) => {
-                        canvas.set_draw_color(sdl2::pixels::Color::RGB(
-                            bot.color.0,
-                            bot.color.1,
-                            bot.color.2,
-                        ));
-                        canvas.fill_rect(rect).unwrap();
-                        match self
-                            .colors
-                            .get(&format!("{}:{}", x, y))
-                            .unwrap_or(&Color::None)
-                        {
-                            Color::None => {
-                                canvas.set_draw_color(sdl2::pixels::Color::WHITE);
-                            }
-                            Color::Green => {
-                                canvas.set_draw_color(sdl2::pixels::Color::GREEN);
-                            }
-                            Color::Yellow => {
-                                canvas.set_draw_color(sdl2::pixels::Color::YELLOW);
-                            }
-                            Color::Red => {
-                                canvas.set_draw_color(sdl2::pixels::Color::RED);
-                            }
-                        };
-                        canvas.draw_rect(rect).unwrap();
-                    }
-                };
-            }
+            match bot_pos.bot.action_color 
+            {
+                Color::None => {
+                    canvas.set_draw_color(sdl2::pixels::Color::WHITE);
+                }
+                Color::Green => {
+                    canvas.set_draw_color(sdl2::pixels::Color::GREEN);
+                }
+                Color::Yellow => {
+                    canvas.set_draw_color(sdl2::pixels::Color::YELLOW);
+                }
+                Color::Red => {
+                    canvas.set_draw_color(sdl2::pixels::Color::RED);
+                }
+            };
+            canvas.draw_rect(rect).unwrap();
         }
     }
 }
